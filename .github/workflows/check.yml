@@ -1,0 +1,24 @@
+name: Change-file Check (reusable)
+
+# Fast PR gate: every PR touching a publishable package must carry a
+# beachball change file. Uses the official install-beachball action — no
+# full dependency install needed.
+# Caller trigger: on: pull_request
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: "22"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+      - uses: microsoft/beachball/actions/install-beachball@install-beachball_v3
+      - run: beachball check

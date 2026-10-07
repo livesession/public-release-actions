@@ -1,0 +1,55 @@
+name: Tag Release (reusable)
+
+# Fires when a Release PR merge lands the manifest on the default branch:
+# creates one release tag per package (idempotent) and pushes them — each
+# pushed tag then triggers the publish-tag workflow.
+# Caller needs: permissions: { contents: write } and should trigger with
+#   on: push: paths: [".release/latest.json"] (or its manifest-path)
+
+on:
+  workflow_call:
+    inputs:
+      manifest-path:
+        type: string
+        default: ".release/latest.json"
+      tag-template:
+        type: string
+        default: "{name}@{version}"
+    secrets:
+      tag-token:
+        required: false
+        description: >
+          PAT (contents: write) used to push the tags. Without it the tags are
+          pushed by GITHUB_TOKEN and publish-tag never runs — see below.
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      # The checkout token is what `git push` later authenticates as, and it
+      # decides whether the pushed tags trigger anything.
+      #
+      # GitHub does not start a workflow from an event raised by the default
+      # GITHUB_TOKEN — a deliberate loop breaker. So tags pushed with it appear
+      # in the repo and publish-tag, which listens on `push: tags`, never fires:
+      # a green Tag Release run, real tags, and nothing published. Canary is
+      # unaffected because it publishes inside its own run rather than waiting
+      # for an event.
+      #
+      # A PAT-pushed tag is an ordinary user event and does trigger it. Falls
+      # back to github.token, so a caller without the secret still gets its
+      # tags (and no publish).
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # existing tags decide idempotency
+          token: ${{ secrets.tag-token || github.token }}
+          persist-credentials: true
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Create + push release tags
+        uses: livesession/public-release-actions/actions/create-tags@v1
+        with:
+          manifest-path: ${{ inputs.manifest-path }}
+          tag-template: ${{ inputs.tag-template }}

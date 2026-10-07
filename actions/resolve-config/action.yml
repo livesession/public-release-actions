@@ -1,0 +1,13 @@
+name: resolve-config
+description: Emits beachball-config-derived outputs (change_dir, change_glob)
+outputs:
+  change_dir:
+    value: ${{ steps.run.outputs.change_dir }}
+  change_glob:
+    value: ${{ steps.run.outputs.change_glob }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/../../scripts/resolve-config.mjs"

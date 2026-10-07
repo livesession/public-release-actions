@@ -1,0 +1,180 @@
+name: Release PR (reusable)
+
+# Keeps a bot-owned "Release" PR up to date whenever the default branch has
+# pending change files. The PR contains ONLY generated changelogs, consumed
+# change files and the release manifest — package.json versions stay at the
+# placeholder. Merging the PR is the release approval: the manifest change
+# triggers tag creation, and each tag triggers the semver publish.
+# Caller needs: permissions: { contents: write, pull-requests: write, actions: read },
+# plus packages: read to read GitHub Packages (this workflow declares no
+# permissions of its own: a called workflow can't have more than its caller
+# grants), and concurrency: ${{ github.workflow }}-${{ github.ref }}
+# (should-release batch mode)
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        type: string
+        default: "https://npm.pkg.github.com"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: "10"
+      package-manager:
+        type: string
+        default: "pnpm"
+        description: "pnpm | bun. Only toolchain setup, registry auth and install differ — everything downstream is npm-compatible."
+      bun-version:
+        type: string
+        default: "latest"
+        description: "Used when package-manager is bun. Pin it to the repo's own bun to keep the lockfile format in step."
+      scope:
+        type: string
+        default: ""
+        description: "Partial release: comma-separated package names (empty = everything pending)"
+      release-branch:
+        type: string
+        default: "release/next"
+      placeholder-version:
+        type: string
+        default: "0.0.0-dev"
+      tag-template:
+        type: string
+        default: "{name}@{version}"
+      seeds:
+        type: string
+        default: "{}"
+        description: "JSON map name->version for packages never published before"
+      manifest-path:
+        type: string
+        default: ".release/latest.json"
+      github-registry:
+        type: string
+        default: "https://npm.pkg.github.com"
+        description: "The registry the install token is written for, so a dependency from GitHub Packages installs even when the publish registry is another one. Empty string: none."
+      ignore-versions:
+        type: string
+        default: ""
+        description: "JS regex: matching versions are invisible to the version restore (tags and registry) and to the publish guards, e.g. '^\\d{6}\\.' for `YYYYMM.x.y` versions another tool published next to the semver line"
+    secrets:
+      registry-token:
+        required: false
+      install-token:
+        required: false
+        description: "Read-only registry auth for the INSTALL only (e.g. a classic PAT with read:packages when a dependency is another repo's package, which GITHUB_TOKEN cannot read). This workflow only installs, so install-token and registry-token are interchangeable here."
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      shouldRelease: ${{ steps.gate.outputs.shouldRelease }}
+      changeDir: ${{ steps.config.outputs.change_dir }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: config
+        uses: livesession/public-release-actions/actions/resolve-config@v1
+      - id: gate
+        uses: microsoft/beachball/actions/should-release@should-release_v3
+        with:
+          token: ${{ github.token }}
+          mode: output
+          batch: true
+          changeGlob: ${{ steps.config.outputs.change_glob }}
+
+  release-pr:
+    needs: gate
+    if: needs.gate.outputs.shouldRelease == 'yes'
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_NPM_TOKEN: ${{ secrets.install-token || secrets.registry-token || github.token }}
+      NODE_AUTH_TOKEN: ${{ secrets.install-token || secrets.registry-token || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # restore-versions reads release tags
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+        with:
+          version: ${{ inputs.pnpm-version }}
+      - uses: oven-sh/setup-bun@v2
+        if: inputs.package-manager == 'bun'
+        with:
+          bun-version: ${{ inputs.bun-version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          # setup-node has no bun cache mode; an empty value disables caching.
+          cache: ${{ inputs.package-manager == 'pnpm' && 'pnpm' || '' }}
+      # newer pnpm ignores env-var credentials in committed project .npmrc
+      # files (secret-leak hardening) — write the registry auth to the
+      # user-level config before the install reads it
+      - name: Registry auth (user-level)
+        uses: livesession/public-release-actions/actions/registry-auth@v1
+        with:
+          mode: install
+          registry: ${{ inputs.registry }}
+          github-registry: ${{ inputs.github-registry }}
+          package-manager: ${{ inputs.package-manager }}
+          token: ${{ env.GITHUB_NPM_TOKEN }}
+      - name: Install dependencies
+        run: ${{ inputs.package-manager }} install --frozen-lockfile
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Resolve release scope
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_BRANCH: ${{ inputs.release-branch }}
+        run: |
+          # explicit input wins; push-triggered runs keep an open scoped PR
+          # sticky by reading its release-scope marker
+          SCOPE="${{ inputs.scope }}"
+          if [ -z "$SCOPE" ]; then
+            BODY=$(gh pr list --head "$RELEASE_BRANCH" --state open --json body --jq '.[0].body // ""')
+            SCOPE=$(echo "$BODY" | sed -n 's/.*<!-- release-scope: \(.*\) -->.*/\1/p' | head -1)
+          fi
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+          [ -n "$SCOPE" ] && echo "partial release scope: $SCOPE" || echo "full release (everything pending)"
+      - name: Switch to release branch
+        run: git switch -C "${{ inputs.release-branch }}"
+      - name: Compute versions + changelogs (beachball bump)
+        id: prepare
+        uses: livesession/public-release-actions/actions/prepare-release-pr@v1
+        with:
+          registry: ${{ inputs.registry }}
+          placeholder-version: ${{ inputs.placeholder-version }}
+          tag-template: ${{ inputs.tag-template }}
+          seeds: ${{ inputs.seeds }}
+          scope: ${{ steps.scope.outputs.scope }}
+          manifest-path: ${{ inputs.manifest-path }}
+          ignore-versions: ${{ inputs.ignore-versions }}
+      # Skip when beachball computed no releases (e.g. only "none"-type change
+      # files): prepare-release-pr exits without setting `summary` or writing
+      # the manifest, so there's nothing to commit and the manifest dir won't
+      # exist (a bare `git add` on it would fail with a pathspec error).
+      - name: Push release branch + open/update PR
+        if: steps.prepare.outputs.summary != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add -A "${{ needs.gate.outputs.changeDir }}" "$(dirname "${{ inputs.manifest-path }}")"
+          git add -A "**/CHANGELOG.md" "**/CHANGELOG.json" || true
+          git commit --no-verify -m "release: version packages"
+          git push --no-verify --force origin "${{ inputs.release-branch }}"
+          SCOPE="${{ steps.scope.outputs.scope }}"
+          if [ -n "$SCOPE" ]; then
+            SCOPE_NOTE=$'\n\nThis is a **partial release** (scope: `'"$SCOPE"$'`) — change files outside the scope stay pending, and the next Release PR will offer them.\n\n<!-- release-scope: '"$SCOPE"$' -->'
+            TITLE="Release: version packages ($SCOPE)"
+          else
+            SCOPE_NOTE=""
+            TITLE="Release: version packages"
+          fi
+          BODY=$'Merging this PR tags the following releases (tags trigger the registry publish):\n\n```\n'"${{ steps.prepare.outputs.summary }}"$'\n```\n\nGenerated by the Release PR workflow — do not edit by hand; push more change files to the default branch to update it. To release a subset instead, run the workflow manually with a scope.'"$SCOPE_NOTE"
+          gh pr create --base "${{ github.ref_name }}" --head "${{ inputs.release-branch }}" \
+            --title "$TITLE" --body "$BODY" 2>/dev/null \
+            || { gh pr edit "${{ inputs.release-branch }}" --body "$BODY" && gh pr edit "${{ inputs.release-branch }}" --title "$TITLE"; }

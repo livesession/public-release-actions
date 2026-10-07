@@ -1,0 +1,153 @@
+name: Publish Latest (reusable)
+
+# Publishes the latest release from its manifest (.release/latest.json): every
+# name -> version the registry does not have yet, from the release's own
+# commit. No tag push event is involved, so this is the manual way to publish
+# a release whose tags never started Publish Tag, or to finish one that half
+# failed. Idempotent: a version already on the registry is skipped, and
+# `dry-run` shows what would be published. Only a merged release is
+# published (the run must be on the default branch), and a package only once
+# every workspace package it depends on is on the registry.
+# Caller needs: permissions: { contents: read }, plus packages: write to
+# publish to GitHub Packages. This workflow declares no permissions of its
+# own: a called workflow can't have more than its caller grants.
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        type: string
+        default: "https://npm.pkg.github.com"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: "10"
+      build-command:
+        type: string
+        default: "pnpm -r run build"
+      placeholder-version:
+        type: string
+        default: "0.0.0-dev"
+      tag-template:
+        type: string
+        default: "{name}@{version}"
+      seeds:
+        type: string
+        default: "{}"
+      publish-command:
+        type: string
+        default: ""
+        description: "Override the publish command; {name} {version} are substituted"
+      manifest-path:
+        type: string
+        default: ".release/latest.json"
+      packages:
+        type: string
+        default: ""
+        description: "Comma-separated package names to publish; empty publishes the whole manifest"
+      dry-run:
+        type: boolean
+        default: false
+        description: "Show what would be published; publish nothing"
+      github-registry:
+        type: string
+        default: "https://npm.pkg.github.com"
+        description: "The registry the install token is written for, so a dependency from GitHub Packages installs even when the publish registry is another one. Empty string: none."
+      ignore-versions:
+        type: string
+        default: ""
+        description: "JS regex: matching versions are invisible to the version restore (tags and registry) and to the publish guards, e.g. '^\\d{6}\\.' for `YYYYMM.x.y` versions another tool published next to the semver line"
+    secrets:
+      registry-token:
+        required: false
+      install-token:
+        required: false
+        description: "Read-only registry auth for the INSTALL only (e.g. a classic PAT with read:packages when a dependency is another repo's package, which GITHUB_TOKEN cannot read). The publish never uses it: it publishes with registry-token, else the workflow GITHUB_TOKEN (needs permissions: packages: write)."
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      # the install reads with install-token when given; the publish switches to PUBLISH_TOKEN below
+      GITHUB_NPM_TOKEN: ${{ secrets.install-token || secrets.registry-token || github.token }}
+      NODE_AUTH_TOKEN: ${{ secrets.install-token || secrets.registry-token || github.token }}
+      PUBLISH_TOKEN: ${{ secrets.registry-token || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the release commit, and restore-versions reads all release tags
+      # publish what was released, not what the branch holds now; only from the
+      # default branch, so an open Release PR (release/next) is never published
+      - name: Check out the release
+        id: release
+        uses: livesession/public-release-actions/actions/checkout-release@v1
+        with:
+          manifest-path: ${{ inputs.manifest-path }}
+          tag-template: ${{ inputs.tag-template }}
+          default-branch: ${{ github.event.repository.default_branch }}
+      # the manifest's versions seed packages this release publishes for the first time
+      - name: Seeds
+        id: seeds
+        env:
+          SEEDS: ${{ inputs.seeds }}
+          MANIFEST_PATH: ${{ inputs.manifest-path }}
+        run: |
+          node --input-type=module <<'EOF'
+          import { appendFileSync, readFileSync } from "node:fs"
+          const released = JSON.parse(readFileSync(process.env.MANIFEST_PATH, "utf8")).packages || {}
+          const seeds = { ...released, ...JSON.parse(process.env.SEEDS || "{}") }
+          appendFileSync(process.env.GITHUB_OUTPUT, "seeds=" + JSON.stringify(seeds) + "\n")
+          EOF
+      # the release's own pnpm (its packageManager), so a later bump on the branch
+      # cannot clash with the code being built
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.release.outputs.pnpm-version || inputs.pnpm-version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+      # newer pnpm ignores env-var credentials in committed project .npmrc
+      # files (secret-leak hardening) — write the registry auth to the
+      # user-level config; both the install and the publish read it
+      - name: Registry auth (user-level)
+        uses: livesession/public-release-actions/actions/registry-auth@v1
+        with:
+          mode: install
+          registry: ${{ inputs.registry }}
+          github-registry: ${{ inputs.github-registry }}
+          token: ${{ env.GITHUB_NPM_TOKEN }}
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        if: inputs.build-command != ''
+        run: ${{ inputs.build-command }}
+      - name: Restore real versions (tags -> package.json)
+        uses: livesession/public-release-actions/actions/restore-versions@v1
+        with:
+          registry: ${{ inputs.registry }}
+          placeholder-version: ${{ inputs.placeholder-version }}
+          tag-template: ${{ inputs.tag-template }}
+          seeds: ${{ steps.seeds.outputs.seeds }}
+          ignore-versions: ${{ inputs.ignore-versions }}
+      # the install may have run with a read-only install-token; the publish writes, so it
+      # authenticates with registry-token, else the workflow GITHUB_TOKEN (packages: write).
+      - name: Registry auth for the publish
+        uses: livesession/public-release-actions/actions/registry-auth@v1
+        with:
+          mode: publish
+          registry: ${{ inputs.registry }}
+          token: ${{ env.PUBLISH_TOKEN }}
+      - name: Publish the release${{ inputs.dry-run && ' (dry run)' || '' }}
+        uses: livesession/public-release-actions/actions/publish-manifest@v1
+        env:
+          GITHUB_NPM_TOKEN: ${{ secrets.registry-token || github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.registry-token || github.token }}
+        with:
+          registry: ${{ inputs.registry }}
+          manifest-path: ${{ inputs.manifest-path }}
+          packages: ${{ inputs.packages }}
+          dry-run: ${{ inputs.dry-run }}
+          publish-command: ${{ inputs.publish-command }}
+          ignore-versions: ${{ inputs.ignore-versions }}

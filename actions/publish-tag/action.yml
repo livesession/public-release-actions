@@ -1,0 +1,18 @@
+name: publish-tag
+description: Publishes the one package named by the pushed release tag
+inputs:
+  registry:
+    default: "https://npm.pkg.github.com"
+  tag-template:
+    default: "{name}@{version}"
+  publish-command:
+    default: ""
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        TAG_TEMPLATE: ${{ inputs.tag-template }}
+        PUBLISH_COMMAND: ${{ inputs.publish-command }}
+      run: node "$GITHUB_ACTION_PATH/../../scripts/publish-tag.mjs"

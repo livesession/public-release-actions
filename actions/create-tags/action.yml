@@ -1,0 +1,15 @@
+name: create-tags
+description: Creates + pushes release tags from the manifest (idempotent)
+inputs:
+  manifest-path:
+    default: ".release/latest.json"
+  tag-template:
+    default: "{name}@{version}"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        MANIFEST_PATH: ${{ inputs.manifest-path }}
+        TAG_TEMPLATE: ${{ inputs.tag-template }}
+      run: node "$GITHUB_ACTION_PATH/../../scripts/create-tags.mjs"

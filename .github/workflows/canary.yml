@@ -1,0 +1,108 @@
+name: Canary (reusable)
+
+# Publishes every workspace package as a channel build versioned by commit
+# SHA (0.0.0-<preid>.<shortsha>) under the <preid> dist-tag.
+# Caller needs: permissions: { contents: read }, plus packages: write to
+# publish to GitHub Packages. This workflow declares no permissions of its
+# own: a called workflow can't have more than its caller grants.
+
+on:
+  workflow_call:
+    inputs:
+      registry:
+        type: string
+        default: "https://npm.pkg.github.com"
+      node-version:
+        type: string
+        default: "22"
+      pnpm-version:
+        type: string
+        default: "10"
+      package-manager:
+        type: string
+        default: "pnpm"
+        description: "pnpm | bun. Only toolchain setup, registry auth and install differ — everything downstream is npm-compatible."
+      bun-version:
+        type: string
+        default: "latest"
+        description: "Used when package-manager is bun. Pin it to the repo's own bun to keep the lockfile format in step."
+      build-command:
+        type: string
+        default: "pnpm -r run build"
+        description: "Run before publishing; empty string skips"
+      canary-preid:
+        type: string
+        default: "canary"
+      canary-publish-command:
+        type: string
+        default: ""
+        description: "Override the per-package publish command; {name} {version} {tag} are substituted"
+      github-registry:
+        type: string
+        default: "https://npm.pkg.github.com"
+        description: "The registry the install token is written for, so a dependency from GitHub Packages installs even when the publish registry is another one. Empty string: none."
+    secrets:
+      registry-token:
+        required: false
+        description: "Registry auth; defaults to the workflow GITHUB_TOKEN (GitHub Packages)"
+      install-token:
+        required: false
+        description: "Read-only registry auth for the INSTALL only (e.g. a classic PAT with read:packages when a dependency is another repo's package, which GITHUB_TOKEN cannot read). The publish never uses it: it publishes with registry-token, else the workflow GITHUB_TOKEN (needs permissions: packages: write)."
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    env:
+      # the install reads with install-token when given; the publish switches to PUBLISH_TOKEN below
+      GITHUB_NPM_TOKEN: ${{ secrets.install-token || secrets.registry-token || github.token }}
+      NODE_AUTH_TOKEN: ${{ secrets.install-token || secrets.registry-token || github.token }}
+      PUBLISH_TOKEN: ${{ secrets.registry-token || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+        with:
+          version: ${{ inputs.pnpm-version }}
+      - uses: oven-sh/setup-bun@v2
+        if: inputs.package-manager == 'bun'
+        with:
+          bun-version: ${{ inputs.bun-version }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          # setup-node has no bun cache mode; an empty value disables caching.
+          cache: ${{ inputs.package-manager == 'pnpm' && 'pnpm' || '' }}
+      # newer pnpm ignores env-var credentials in committed project .npmrc
+      # files (secret-leak hardening) — write the registry auth to the
+      # user-level config; both the install and the publish read it
+      - name: Registry auth (user-level)
+        uses: livesession/public-release-actions/actions/registry-auth@v1
+        with:
+          mode: install
+          registry: ${{ inputs.registry }}
+          github-registry: ${{ inputs.github-registry }}
+          package-manager: ${{ inputs.package-manager }}
+          token: ${{ env.GITHUB_NPM_TOKEN }}
+      - name: Install
+        run: ${{ inputs.package-manager }} install --frozen-lockfile
+      - name: Build
+        if: inputs.build-command != ''
+        run: ${{ inputs.build-command }}
+      # the install may have run with a read-only install-token; the publish writes, so it
+      # authenticates with registry-token, else the workflow GITHUB_TOKEN (packages: write).
+      - name: Registry auth for the publish
+        uses: livesession/public-release-actions/actions/registry-auth@v1
+        with:
+          mode: publish
+          registry: ${{ inputs.registry }}
+          package-manager: ${{ inputs.package-manager }}
+          token: ${{ env.PUBLISH_TOKEN }}
+      - name: Publish canary
+        uses: livesession/public-release-actions/actions/publish-canary@v1
+        env:
+          GITHUB_NPM_TOKEN: ${{ secrets.registry-token || github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.registry-token || github.token }}
+        with:
+          registry: ${{ inputs.registry }}
+          canary-preid: ${{ inputs.canary-preid }}
+          canary-publish-command: ${{ inputs.canary-publish-command }}

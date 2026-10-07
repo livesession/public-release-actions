@@ -1,0 +1,35 @@
+name: prepare-release-pr
+description: Computes versions + changelogs (beachball bump) and writes the release manifest
+inputs:
+  registry:
+    default: "https://npm.pkg.github.com"
+  placeholder-version:
+    default: "0.0.0-dev"
+  tag-template:
+    default: "{name}@{version}"
+  seeds:
+    default: "{}"
+  scope:
+    default: ""
+  manifest-path:
+    default: ".release/latest.json"
+  ignore-versions:
+    default: ""
+    description: "JS regex; matching versions are ignored as version sources (e.g. '^\\d{6}\\.' for date-based versions another tool published)"
+outputs:
+  summary:
+    value: ${{ steps.run.outputs.summary }}
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        PLACEHOLDER: ${{ inputs.placeholder-version }}
+        TAG_TEMPLATE: ${{ inputs.tag-template }}
+        SEEDS: ${{ inputs.seeds }}
+        RELEASE_SCOPE: ${{ inputs.scope }}
+        MANIFEST_PATH: ${{ inputs.manifest-path }}
+        IGNORE_VERSIONS: ${{ inputs.ignore-versions }}
+      run: node "$GITHUB_ACTION_PATH/../../scripts/prepare-release-pr.mjs"

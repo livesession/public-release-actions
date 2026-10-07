@@ -1,0 +1,29 @@
+name: publish-manifest
+description: Publishes every name@version of the release manifest the registry does not have yet (idempotent)
+inputs:
+  registry:
+    default: "https://npm.pkg.github.com"
+  manifest-path:
+    default: ".release/latest.json"
+  packages:
+    default: ""
+    description: "Comma-separated package names; empty publishes the whole manifest"
+  dry-run:
+    default: "false"
+  publish-command:
+    default: ""
+  ignore-versions:
+    default: ""
+    description: "JS regex; matching versions are ignored as version sources (e.g. '^\\d{6}\\.' for date-based versions another tool published)"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        MANIFEST_PATH: ${{ inputs.manifest-path }}
+        PACKAGES: ${{ inputs.packages }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        PUBLISH_COMMAND: ${{ inputs.publish-command }}
+        IGNORE_VERSIONS: ${{ inputs.ignore-versions }}
+      run: node "$GITHUB_ACTION_PATH/../../scripts/publish-manifest.mjs"

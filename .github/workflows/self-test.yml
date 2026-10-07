@@ -1,0 +1,53 @@
+name: Self-test
+
+# This repository's own CI: the script tests (node:test, no dependencies),
+# actionlint (which also runs shellcheck on every `run:` block) and yamllint
+# over the workflows and the composite actions.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: node --test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # a glob, not a directory: `node --test <dir>` loads the directory as a module
+      - run: node --test "scripts/test/*.test.mjs"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: actionlint (with shellcheck)
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+      # every ```yaml block of README.md and examples/release-workflows.md,
+      # checked against the real workflow_call inputs and secrets
+      - name: actionlint the documented workflows
+        run: |
+          dir="$(mktemp -d)"
+          node scripts/test/extract-examples.mjs "$dir"
+          # actionlint discovers workflows through the enclosing git repository;
+          # the release binary avoids docker volume mounts of the temp dir, which
+          # the hosted runner's actionlint container does not see as a project
+          git -C "$dir" init -q
+          mkdir -p "$RUNNER_TEMP/actionlint"
+          (cd "$RUNNER_TEMP/actionlint" && bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12 "$RUNNER_TEMP/actionlint")
+          (cd "$dir" && "$RUNNER_TEMP/actionlint/actionlint" -color)
+      - name: yamllint
+        run: pipx run yamllint==1.37.1 --strict .

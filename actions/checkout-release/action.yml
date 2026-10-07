@@ -1,0 +1,27 @@
+name: checkout-release
+description: Checks out the latest merged release's commit (where its tags point, else the manifest's last change on the default branch)
+inputs:
+  manifest-path:
+    default: ".release/latest.json"
+  tag-template:
+    default: "{name}@{version}"
+  default-branch:
+    description: The repository's default branch; the run must be on it and the release in its history
+    default: ${{ github.event.repository.default_branch }}
+outputs:
+  sha:
+    description: The release commit now checked out
+    value: ${{ steps.release.outputs.sha }}
+  pnpm-version:
+    description: The pnpm of the release commit's packageManager ("" when it names none)
+    value: ${{ steps.release.outputs.pnpm-version }}
+runs:
+  using: composite
+  steps:
+    - id: release
+      shell: bash
+      env:
+        MANIFEST_PATH: ${{ inputs.manifest-path }}
+        TAG_TEMPLATE: ${{ inputs.tag-template }}
+        DEFAULT_BRANCH: ${{ inputs.default-branch }}
+      run: node "$GITHUB_ACTION_PATH/../../scripts/checkout-release.mjs"

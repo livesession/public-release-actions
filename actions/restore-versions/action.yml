@@ -1,0 +1,25 @@
+name: restore-versions
+description: Restores real package versions (tags/registry/seeds) over the placeholders
+inputs:
+  registry:
+    default: "https://npm.pkg.github.com"
+  placeholder-version:
+    default: "0.0.0-dev"
+  tag-template:
+    default: "{name}@{version}"
+  seeds:
+    default: "{}"
+  ignore-versions:
+    default: ""
+    description: "JS regex; matching versions are ignored as version sources (e.g. '^\\d{6}\\.' for date-based versions another tool published)"
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+        PLACEHOLDER: ${{ inputs.placeholder-version }}
+        TAG_TEMPLATE: ${{ inputs.tag-template }}
+        SEEDS: ${{ inputs.seeds }}
+        IGNORE_VERSIONS: ${{ inputs.ignore-versions }}
+      run: node "$GITHUB_ACTION_PATH/../../scripts/restore-versions.mjs"

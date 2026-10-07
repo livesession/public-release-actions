@@ -1,0 +1,13 @@
+extends: default
+
+rules:
+  document-start: disable
+  # long input descriptions and expressions read better on one line
+  line-length: disable
+  truthy:
+    check-keys: false # GitHub's `on:` key
+  comments:
+    min-spaces-from-content: 1
+
+ignore: |
+  scripts/test/fixtures/

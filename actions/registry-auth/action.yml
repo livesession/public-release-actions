@@ -1,0 +1,29 @@
+name: registry-auth
+description: Writes the user-level npm credentials for the install or the publish
+inputs:
+  mode:
+    description: "install | publish"
+    required: true
+  registry:
+    description: The workflow's publish registry
+    default: "https://npm.pkg.github.com"
+  github-registry:
+    description: The registry the install token is always written for ("" = none)
+    default: "https://npm.pkg.github.com"
+  package-manager:
+    description: "pnpm | bun"
+    default: "pnpm"
+  token:
+    description: The install token (mode install) or the publish token (mode publish)
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        REGISTRY: ${{ inputs.registry }}
+        GH_REGISTRY: ${{ inputs.github-registry }}
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        REGISTRY_AUTH_TOKEN: ${{ inputs.token }}
+      run: node "$GITHUB_ACTION_PATH/../../scripts/registry-auth.mjs"
