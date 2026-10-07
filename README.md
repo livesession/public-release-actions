@@ -90,7 +90,7 @@ jobs:
   publish:
     permissions:
       contents: read   # no packages: write — nothing goes to GitHub Packages
-    uses: livesession/public-release-actions/.github/workflows/publish-tag.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/publish-tag.yml@v0
     secrets:
       registry-token: ${{ secrets.NPM_TOKEN }}
     with:
@@ -143,10 +143,10 @@ it to `""` when nothing comes from there. The full set of callers is in
 The reusable workflows in `.github/workflows/` run composite actions from
 `actions/`, which run the Node scripts in `scripts/` (no dependencies beyond
 Node itself) against the calling repository's checkout. The workflows
-reference the actions at the major tag `@v1`, so a caller pins only its
-`uses:` line and the whole toolchain versions together: move the `v1` tag on
+reference the actions at the line tag `@v0` (the major tag once 1.0.0 is out), so a caller pins only its
+`uses:` line and the whole toolchain versions together: move the `v0` tag on
 every release of this repository. To try a branch end to end ahead of a tag,
-push a throwaway branch that rewrites the `actions/*@v1` references to
+push a throwaway branch that rewrites the `actions/*@v0` references to
 itself and point a caller's `uses:` at it.
 
 One composite is useful on its own, in any job that installs from GitHub
@@ -166,7 +166,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: livesession/public-release-actions/actions/registry-auth@v1
+      - uses: livesession/public-release-actions/actions/registry-auth@v0
         with:
           mode: install
           token: ${{ secrets.GH_PACKAGES_READ_TOKEN || github.token }}
@@ -282,7 +282,7 @@ dir=$(mktemp -d) && node scripts/test/extract-examples.mjs "$dir" \
 
 The tests put recording `pnpm` / `npm` shims on `PATH`. The golden test
 (`registry-auth.test.mjs`) runs the plain shell form of each credential step
-from `scripts/test/fixtures/v1/` next to the script and requires the same
+from `scripts/test/fixtures/steps/` next to the script and requires the same
 calls.
 
 ## License

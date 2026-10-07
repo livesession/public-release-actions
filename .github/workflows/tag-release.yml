@@ -49,7 +49,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
       - name: Create + push release tags
-        uses: livesession/public-release-actions/actions/create-tags@v1
+        uses: livesession/public-release-actions/actions/create-tags@v0
         with:
           manifest-path: ${{ inputs.manifest-path }}
           tag-template: ${{ inputs.tag-template }}

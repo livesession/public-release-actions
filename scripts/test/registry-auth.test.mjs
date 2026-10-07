@@ -1,5 +1,5 @@
 // registry-auth: the golden test (with the default inputs the script makes
-// exactly the calls of the plain shell steps in fixtures/v1) and the
+// exactly the calls of the plain shell steps in fixtures/steps) and the
 // behaviour around it.
 import assert from "node:assert/strict"
 import { writeFileSync } from "node:fs"
@@ -9,9 +9,9 @@ import { FIXTURES, fixture, repoFile, sandbox, why } from "./helpers.mjs"
 
 const GITHUB = "https://npm.pkg.github.com"
 
-// scripts/test/fixtures/v1/<workflow>.<mode>.sh: the credential write of each
+// scripts/test/fixtures/steps/<workflow>.<mode>.sh: the credential write of each
 // workflow's registry-auth step, as a plain shell step
-const V1_STEPS = [
+const STEPS = [
   { file: "canary.install.sh", mode: "install", tokenEnv: "GITHUB_NPM_TOKEN", pmAware: true },
   { file: "canary.publish.sh", mode: "publish", tokenEnv: "PUBLISH_TOKEN", pmAware: true },
   { file: "release-pr.install.sh", mode: "install", tokenEnv: "GITHUB_NPM_TOKEN", pmAware: true },
@@ -34,7 +34,7 @@ const runShell = (t, step, { registry, pm, token }) => {
   const box = sandbox(t).shim("pnpm")
   const env = { REGISTRY: registry, [step.tokenEnv]: token }
   if (step.pmAware) env.PM = pm
-  const r = box.bash(join(FIXTURES, "v1", step.file), env)
+  const r = box.bash(join(FIXTURES, "steps", step.file), env)
   assert.equal(r.status, 0, why(r))
   return { calls: box.calls(), npmrc: box.read(join(box.home, ".npmrc")) }
 }
@@ -47,7 +47,7 @@ const runScript = (t, args) => {
 }
 
 describe("golden: default inputs write exactly what the plain shell steps write", () => {
-  for (const step of V1_STEPS) {
+  for (const step of STEPS) {
     for (const registry of [GITHUB, `${GITHUB}/`]) {
       test(`${step.file} (registry ${registry}, pnpm)`, (t) => {
         const token = `tok-${step.mode}-123`
@@ -63,7 +63,7 @@ describe("golden: default inputs write exactly what the plain shell steps write"
 })
 
 describe("bun: a line in ~/.npmrc, with the slash before the colon", () => {
-  for (const step of V1_STEPS.filter((s) => s.pmAware)) {
+  for (const step of STEPS.filter((s) => s.pmAware)) {
     test(step.file, (t) => {
       const shell = runShell(t, step, { registry: GITHUB, pm: "bun", token: "T" })
       const script = runScript(t, { mode: step.mode, registry: GITHUB, packageManager: "bun", token: "T" })

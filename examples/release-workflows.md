@@ -1,10 +1,10 @@
 # Consumer workflows — the six files for `.github/workflows/`
 
 Add these six workflows to the repository that publishes the packages, then
-adjust the placeholders (`@your-scope/...`, the build command). `@v1` pins the
+adjust the placeholders (`@your-scope/...`, the build command). `@v0` pins the
 reusable workflow file; the actions it runs are always
-`livesession/public-release-actions/actions/*@v1`, so a workflow works once
-the `v1` tag points at a commit that has it.
+`livesession/public-release-actions/actions/*@v0`, so a workflow works once
+the `v0` tag points at a commit that has it.
 
 ## check.yml — PR gate
 
@@ -14,7 +14,7 @@ on:
   pull_request:
 jobs:
   change-files:
-    uses: livesession/public-release-actions/.github/workflows/check.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/check.yml@v0
 ```
 
 ## canary.yml — channel build on every default-branch push
@@ -33,7 +33,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: livesession/public-release-actions/.github/workflows/canary.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/canary.yml@v0
     with:
       build-command: pnpm -w run build   # adjust to your repo
 ```
@@ -59,7 +59,7 @@ jobs:
       pull-requests: write
       actions: read
       packages: read   # restore-versions reads published versions from the registry
-    uses: livesession/public-release-actions/.github/workflows/release-pr.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/release-pr.yml@v0
     with:
       scope: ${{ inputs.scope || '' }}
       seeds: '{"@your-scope/your-package": "0.0.0"}'   # only for never-published packages
@@ -78,7 +78,7 @@ jobs:
   tag:
     permissions:
       contents: write
-    uses: livesession/public-release-actions/.github/workflows/tag-release.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/tag-release.yml@v0
     secrets:
       # a PAT with contents: write. Tags pushed by GITHUB_TOKEN start no workflow,
       # so without it the tags appear and Publish Tag never runs
@@ -102,7 +102,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: livesession/public-release-actions/.github/workflows/publish-tag.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/publish-tag.yml@v0
     with:
       build-command: pnpm -w run build   # adjust to your repo
 ```
@@ -136,7 +136,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: livesession/public-release-actions/.github/workflows/publish-latest.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/publish-latest.yml@v0
     with:
       build-command: pnpm -w run build   # match publish-tag.yml
       packages: ${{ inputs.packages }}
@@ -174,7 +174,7 @@ jobs:
   publish:
     permissions:
       contents: read
-    uses: livesession/public-release-actions/.github/workflows/publish-tag.yml@v1
+    uses: livesession/public-release-actions/.github/workflows/publish-tag.yml@v0
     secrets:
       registry-token: ${{ secrets.NPM_TOKEN }}
     with:

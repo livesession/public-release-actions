@@ -76,7 +76,7 @@ jobs:
       # files (secret-leak hardening) — write the registry auth to the
       # user-level config; both the install and the publish read it
       - name: Registry auth (user-level)
-        uses: livesession/public-release-actions/actions/registry-auth@v1
+        uses: livesession/public-release-actions/actions/registry-auth@v0
         with:
           mode: install
           registry: ${{ inputs.registry }}
@@ -91,14 +91,14 @@ jobs:
       # the install may have run with a read-only install-token; the publish writes, so it
       # authenticates with registry-token, else the workflow GITHUB_TOKEN (packages: write).
       - name: Registry auth for the publish
-        uses: livesession/public-release-actions/actions/registry-auth@v1
+        uses: livesession/public-release-actions/actions/registry-auth@v0
         with:
           mode: publish
           registry: ${{ inputs.registry }}
           package-manager: ${{ inputs.package-manager }}
           token: ${{ env.PUBLISH_TOKEN }}
       - name: Publish canary
-        uses: livesession/public-release-actions/actions/publish-canary@v1
+        uses: livesession/public-release-actions/actions/publish-canary@v0
         env:
           GITHUB_NPM_TOKEN: ${{ secrets.registry-token || github.token }}
           NODE_AUTH_TOKEN: ${{ secrets.registry-token || github.token }}

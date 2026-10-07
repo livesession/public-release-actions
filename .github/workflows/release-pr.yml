@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: config
-        uses: livesession/public-release-actions/actions/resolve-config@v1
+        uses: livesession/public-release-actions/actions/resolve-config@v0
       - id: gate
         uses: microsoft/beachball/actions/should-release@should-release_v3
         with:
@@ -112,7 +112,7 @@ jobs:
       # files (secret-leak hardening) — write the registry auth to the
       # user-level config before the install reads it
       - name: Registry auth (user-level)
-        uses: livesession/public-release-actions/actions/registry-auth@v1
+        uses: livesession/public-release-actions/actions/registry-auth@v0
         with:
           mode: install
           registry: ${{ inputs.registry }}
@@ -144,7 +144,7 @@ jobs:
         run: git switch -C "${{ inputs.release-branch }}"
       - name: Compute versions + changelogs (beachball bump)
         id: prepare
-        uses: livesession/public-release-actions/actions/prepare-release-pr@v1
+        uses: livesession/public-release-actions/actions/prepare-release-pr@v0
         with:
           registry: ${{ inputs.registry }}
           placeholder-version: ${{ inputs.placeholder-version }}

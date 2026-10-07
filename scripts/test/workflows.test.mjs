@@ -97,7 +97,7 @@ test("this repository's actions: one ref for all of them, and every action exist
     }
   }
   assert.ok(found > 0, "the workflows use the composites")
-  assert.deepEqual([...refs], ["v1"], `mixed refs: ${[...refs].join(", ")}`)
+  assert.deepEqual([...refs], ["v0"], `mixed refs: ${[...refs].join(", ")}`)
 })
 
 test("no workflow writes registry credentials in shell (the registry-auth composite does)", () => {

@@ -38,7 +38,7 @@ describe("yamlBlocks", () => {
 
 describe("asWorkflow", () => {
   test("a workflow stays whole; the reusable workflow refs point at the local files", () => {
-    const block = "name: Canary\non: push\njobs:\n  c:\n    uses: livesession/public-release-actions/.github/workflows/canary.yml@v1\n"
+    const block = "name: Canary\non: push\njobs:\n  c:\n    uses: livesession/public-release-actions/.github/workflows/canary.yml@v0\n"
     assert.equal(
       asWorkflow(block, "x"),
       "name: Canary\non: push\njobs:\n  c:\n    uses: ./.github/workflows/reusable-canary.yml\n",
